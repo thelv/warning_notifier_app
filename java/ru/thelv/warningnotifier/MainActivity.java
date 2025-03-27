@@ -13,6 +13,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import java.util.List;
+import java.text.SimpleDateFormat;
+import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
     private MonitoringManager monitoringManager;
@@ -44,6 +46,7 @@ public class MainActivity extends AppCompatActivity {
         loadSettings();
         setupInputValidation();
         updateView();
+        showLog();
         //logTextView = findViewById(R.id.logTextView);
     }
 
@@ -211,32 +214,34 @@ public class MainActivity extends AppCompatActivity {
                     LinearLayout.LayoutParams.WRAP_CONTENT));
             logContainer.addView(logHeader); // Добавляем заголовок
 
-            // Добавляем кружочки в обратном порядке
+            // Форматируем дату
+            SimpleDateFormat dateFormat = new SimpleDateFormat("dd MMM yyyy HH:mm", Locale.getDefault());
             for (int i = log.size() - 1; i >= 0; i--) {
                 CheckResult result = log.get(i);
-                ImageView circle = new ImageView(this);
+                TextView logEntry = new TextView(this);
+                String statusText;
                 int status = result.getStatus();
                 switch (status) {
                     case UrlChecker.SUCCESS:
-                        circle.setBackgroundColor(Color.GREEN); // Зеленый кружок
+                        statusText = "OK"; // Текст для успешной проверки
+                        logEntry.setTextColor(Color.GREEN); // Зеленый цвет
                         break;
                     case UrlChecker.ERROR:
-                        circle.setBackgroundColor(Color.RED); // Красный кружок
+                        statusText = "Error"; // Текст для ошибки
+                        logEntry.setTextColor(Color.RED); // Красный цвет
                         break;
                     case UrlChecker.INTERNET_UNAVAILABLE:
-                        circle.setBackgroundColor(Color.YELLOW); // Желтый кружок
+                        statusText = "Internet Unavailable"; // Текст для недоступности
+                        logEntry.setTextColor(Color.rgb(150, 150, 0)); // Желтый цвет
                         break;
                     default:
-                        circle.setBackgroundColor(Color.GRAY); // Неизвестный статус
+                        statusText = "Unknown"; // Неизвестный статус
+                        logEntry.setTextColor(Color.GRAY); // Серый цвет
                 }
 
-                // Устанавливаем размеры кружка
-                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(50, 50); // 50x50 пикселей
-                params.setMargins(5, 0, 5, 0); // Отступы
-                circle.setLayoutParams(params);
-                circle.setScaleType(ImageView.ScaleType.FIT_XY); // Масштабирование
-
-                logContainer.addView(circle); // Добавляем кружок в контейнер
+                // Устанавливаем текст с датой и статусом
+                logEntry.setText(String.format("%s - %s", dateFormat.format(result.getTimestamp()), statusText));
+                logContainer.addView(logEntry); // Добавляем запись в контейнер
             }
         } else {
             // Если лог пуст, скрываем заголовок

@@ -13,6 +13,8 @@ import android.widget.Toast;
 import androidx.core.app.NotificationCompat;
 import androidx.work.*;
 
+import java.text.SimpleDateFormat;
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -23,6 +25,7 @@ import java.util.List;
 
 public class MonitoringManager {
     private static MonitoringManager instance;
+    private Notifications notifications;
 
     private String urlGoogle ="http://www.google.com/";
 
@@ -53,17 +56,134 @@ public class MonitoringManager {
     private boolean updateViewNeeded = false;
     private List<CheckResult> checkLog; // Массив для хранения результатов проверок
 
+    class Notifications
+    {
+        boolean errorShowing=false;
+
+        Notifications()
+        {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                NotificationChannel channel = new NotificationChannel(
+                        NOTIFICATION_CHANNEL_ID,
+                        "Monitoring Notifications",
+                        NotificationManager.IMPORTANCE_HIGH
+                );
+                channel.setDescription("Notifications for URL monitoring status");
+
+                NotificationManager notificationManager =
+                        applicationContext.getSystemService(NotificationManager.class);
+                notificationManager.createNotificationChannel(channel);
+            }
+        }
+
+        void show()
+        {
+            show(false);
+        }
+
+        void show(boolean newEvent)
+        {
+            if(errorNotificationActive)
+            {
+                if(errorShowing && ! newEvent) return;
+                errorShowing=true;
+
+                Intent intent = new Intent(applicationContext, MainActivity.class);
+                PendingIntent pendingIntent = PendingIntent.getActivity(
+                        applicationContext,
+                        0,
+                        intent,
+                        PendingIntent.FLAG_IMMUTABLE
+                );
+
+                String title, content;
+                if (errorNotificationType == ERROR_NOTIFICATION_ERROR) {
+                    title = "URL Check Failed";
+                    content = "The URL returned an error status";
+                } else {
+                    title = "URL Unavailable";
+                    content = "The URL has been unreachable for too long";
+                }
+
+                // Создаем уведомление
+                NotificationCompat.Builder builder = new NotificationCompat.Builder(applicationContext, NOTIFICATION_CHANNEL_ID)
+                        .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                        .setContentTitle(title)
+                        .setContentText(content)
+                        .setPriority(NotificationCompat.PRIORITY_HIGH)
+                        .setAutoCancel(false)
+                        .setOngoing(true)
+                        .setContentIntent(pendingIntent);
+
+                // Получаем NotificationManager
+                NotificationManager notificationManager =
+                        (NotificationManager) applicationContext.getSystemService(Context.NOTIFICATION_SERVICE);
+
+                // Вибрация
+                long[] vibrationPattern = {0, 200, 100, 200}; // Пауза, вибрация, пауза, вибрация
+                builder.setVibrate(vibrationPattern);
+
+                // Звук уведомления
+                Uri soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+                builder.setSound(soundUri);
+
+                // Показываем уведомление
+                notificationManager.notify(NOTIFICATION_ID, builder.build());
+            }
+            else if(active)
+            {
+                SimpleDateFormat dateFormat = new SimpleDateFormat("dd MMM yyyy HH:mm", Locale.getDefault());
+                Intent intent = new Intent(applicationContext, MainActivity.class);
+                PendingIntent pendingIntent = PendingIntent.getActivity(
+                        applicationContext,
+                        0,
+                        intent,
+                        PendingIntent.FLAG_IMMUTABLE
+                );
+
+                String title, content;
+                title = "Monitoring active ("+((lastSuccessTime!=0) ? dateFormat.format(lastSuccessTime) : "never yet")+" success)";
+
+                // Создаем уведомление
+                NotificationCompat.Builder builder = new NotificationCompat.Builder(applicationContext, NOTIFICATION_CHANNEL_ID)
+                        .setSmallIcon(android.R.drawable.ic_dialog_info)
+                        .setContentTitle(title)
+                        //.setContentText(content)
+                        .setPriority(NotificationCompat.PRIORITY_HIGH)
+                        .setAutoCancel(false)
+                        .setOngoing(true)
+                        .setContentIntent(pendingIntent);
+
+                // Получаем NotificationManager
+                NotificationManager notificationManager =
+                        (NotificationManager) applicationContext.getSystemService(Context.NOTIFICATION_SERVICE);
+
+                // Вибрация
+
+                // Звук уведомления
+                builder.setSound(null);
+
+                // Показываем уведомление
+                notificationManager.notify(NOTIFICATION_ID, builder.build());
+            }
+            else
+            {
+                NotificationManager notificationManager =
+                        (NotificationManager) applicationContext.getSystemService(Context.NOTIFICATION_SERVICE);
+                notificationManager.cancel(NOTIFICATION_ID);
+            }
+        }
+    }
+
     private MonitoringManager(Context context) {
         this.applicationContext = context.getApplicationContext();
         this.prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         this.editor = prefs.edit();
-        createNotificationChannel();
+        notifications=new Notifications();
         loadSettings();
         loadCheckLog(); // Загружаем лог при создании объекта
 
-        if (errorNotificationActive) {
-            showNotification(errorNotificationType);
-        }
+        //notifications.show();
 
         if(activity!=null) activity.showLog();
     }
@@ -73,6 +193,11 @@ public class MonitoringManager {
             instance = new MonitoringManager(context);
         }
         return instance;
+    }
+
+    public void showNotification()
+    {
+        notifications.show(true);
     }
 
     public void setActivity(MainActivity activity) {
@@ -121,7 +246,7 @@ public class MonitoringManager {
                 activity.runOnUiThread(() -> activity.showLog()); // Вызов showLog в UI потоке
             }
 
-            setLastSuccessTime(System.currentTimeMillis());
+            setLastSuccessTime(0);//System.currentTimeMillis());
 
             // Настройка периодической работы
             PeriodicWorkRequest workRequest = new PeriodicWorkRequest.Builder(
@@ -142,6 +267,8 @@ public class MonitoringManager {
             //checkUrl(); // Первый запуск
 
             updateView(); // Вызываем обновление после старта
+
+            notifications.show();
         }
     }
 
@@ -151,6 +278,7 @@ public class MonitoringManager {
             setLastSuccessTime(0);
             WorkManager.getInstance(applicationContext).cancelUniqueWork("urlCheck");
             updateView(); // Вызываем обновление после остановки
+            notifications.show();
         }
     }
 
@@ -184,9 +312,7 @@ public class MonitoringManager {
     public void resetError() {
         setErrorNotificationActive(false);
         setLastSuccessTime(System.currentTimeMillis());
-        NotificationManager notificationManager =
-            (NotificationManager) applicationContext.getSystemService(Context.NOTIFICATION_SERVICE);
-        notificationManager.cancel(NOTIFICATION_ID);
+        notifications.show();
         updateView();
     }
 
@@ -221,72 +347,13 @@ public class MonitoringManager {
             }
 
             updateView(); // Вызываем обновление после проверки URL
+            notifications.show(true);
         }).start();
     }
 
     private void errorHappenedHandler(int errorType) {
         setErrorNotificationActive(true);
         setErrorNotificationType(errorType);
-        showNotification(errorType);
-    }
-
-    private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                NOTIFICATION_CHANNEL_ID,
-                "Monitoring Notifications",
-                NotificationManager.IMPORTANCE_HIGH
-            );
-            channel.setDescription("Notifications for URL monitoring status");
-            
-            NotificationManager notificationManager = 
-                applicationContext.getSystemService(NotificationManager.class);
-            notificationManager.createNotificationChannel(channel);
-        }
-    }
-
-    public void showNotification(int errorType) {
-        Intent intent = new Intent(applicationContext, MainActivity.class);
-        PendingIntent pendingIntent = PendingIntent.getActivity(
-            applicationContext,
-            0,
-            intent,
-            PendingIntent.FLAG_IMMUTABLE
-        );
-
-        String title, content;
-        if (errorType == ERROR_NOTIFICATION_ERROR) {
-            title = "URL Check Failed";
-            content = "The URL returned an error status";
-        } else {
-            title = "URL Unavailable";
-            content = "The URL has been unreachable for too long";
-        }
-
-        // Создаем уведомление
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(applicationContext, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_alert)
-            .setContentTitle(title)
-            .setContentText(content)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(false)
-            .setOngoing(true)
-            .setContentIntent(pendingIntent);
-
-        // Получаем NotificationManager
-        NotificationManager notificationManager = 
-            (NotificationManager) applicationContext.getSystemService(Context.NOTIFICATION_SERVICE);
-        
-        // Вибрация
-        long[] vibrationPattern = {0, 200, 100, 200}; // Пауза, вибрация, пауза, вибрация
-        builder.setVibrate(vibrationPattern);
-
-        // Звук уведомления
-        Uri soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-        builder.setSound(soundUri);
-
-        // Показываем уведомление
-        notificationManager.notify(NOTIFICATION_ID, builder.build());
     }
 
     public boolean isActive() {

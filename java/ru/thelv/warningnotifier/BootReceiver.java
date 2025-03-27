@@ -10,7 +10,7 @@ public class BootReceiver extends BroadcastReceiver {
         if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) {
             // Просто создаем экземпляр MonitoringManager
             // Он сам проверит состояние ошибки и покажет уведомление если нужно
-            MonitoringManager.getInstance(context);
+            MonitoringManager.getInstance(context).showNotification();
         }
     }
 } 

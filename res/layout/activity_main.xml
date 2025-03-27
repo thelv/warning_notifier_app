@@ -105,17 +105,17 @@
         android:layout_marginBottom="8dp"/>
 
     <Button
-        android:id="@+id/resetErrorButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Reset Error"
-        android:layout_marginBottom="8dp"/>
-
-    <Button
         android:id="@+id/testUrlButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Test URL"
+        android:layout_marginBottom="8dp"/>
+
+    <Button
+        android:id="@+id/resetErrorButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Reset Error"
         android:layout_marginBottom="8dp"/>
 
     <LinearLayout
